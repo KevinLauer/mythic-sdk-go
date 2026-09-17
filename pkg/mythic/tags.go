@@ -343,7 +343,7 @@ func (c *Client) CreateTag(ctx context.Context, req *types.CreateTagRequest) (*t
 		ID     int    `json:"id"`
 	}
 
-	err := c.executeRESTWebhook(ctx, "api/v1.4/tag_create_webhook", requestData, &response)
+	err := c.executeRESTWebhook(ctx, "tag_create_webhook", requestData, &response)
 	if err != nil {
 		return nil, WrapError("CreateTag", err, "failed to execute webhook")
 	}

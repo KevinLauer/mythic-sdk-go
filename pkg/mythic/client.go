@@ -64,13 +64,10 @@ func NewClient(config *Config) (*Client, error) {
 		return nil, WrapError("NewClient", err, "invalid configuration")
 	}
 
-	// Detect if the APIToken is actually a JWT (starts with "eyJ" — the
-	// base64 encoding of '{"'). JWTs must be sent via "Authorization:
-	// Bearer" header, not the "apitoken" header which is reserved for
-	// Mythic's long-lived API tokens stored in the database.
-	if config.APIToken != "" && strings.HasPrefix(config.APIToken, "eyJ") {
+	// Mythic 4 uses Authorization: Bearer for both opaque mtk_ API tokens
+	// and JWTs. Keep a copy on AccessToken so GraphQL and REST share one header.
+	if config.APIToken != "" && config.AccessToken == "" {
 		config.AccessToken = config.APIToken
-		config.APIToken = ""
 	}
 
 	// Create cookie jar for session management
@@ -301,19 +298,29 @@ func (c *Client) getAuthenticatedClient() *graphql.Client {
 	})
 }
 
+// AuthHeaders returns Mythic 4 Bearer headers. Never send the removed apitoken header.
+func AuthHeaders(apiToken, accessToken string) map[string]string {
+	headers := make(map[string]string)
+	token := accessToken
+	if token == "" {
+		token = apiToken
+	}
+	if token != "" {
+		headers["Authorization"] = "Bearer " + token
+	}
+	return headers
+}
+
+// WebhookEndpoint strips the Mythic 3 /api/v1.4 prefix. v4 mounts actions at the root.
+func WebhookEndpoint(endpoint string) string {
+	endpoint = strings.TrimPrefix(endpoint, "/")
+	endpoint = strings.TrimPrefix(endpoint, "api/v1.4/")
+	return strings.TrimPrefix(endpoint, "/")
+}
+
 // getAuthHeaders returns the authentication headers for API requests.
 func (c *Client) getAuthHeaders() map[string]string {
-	headers := make(map[string]string)
-
-	// Use API token if available (preferred)
-	if c.config.APIToken != "" {
-		headers["apitoken"] = c.config.APIToken
-	} else if c.config.AccessToken != "" {
-		// Use JWT access token
-		headers["Authorization"] = "Bearer " + c.config.AccessToken
-	}
-
-	return headers
+	return AuthHeaders(c.config.APIToken, c.config.AccessToken)
 }
 
 // executeRESTWebhook executes a REST API webhook call with authentication.
@@ -327,7 +334,7 @@ func (c *Client) executeRESTWebhook(ctx context.Context, endpoint string, reques
 	if !c.config.SSL {
 		scheme = "http"
 	}
-	url := fmt.Sprintf("%s://%s/%s", scheme, stripScheme(c.config.ServerURL), endpoint)
+	url := fmt.Sprintf("%s://%s/%s", scheme, stripScheme(c.config.ServerURL), WebhookEndpoint(endpoint))
 
 	// Marshal request data
 	reqBytes, err := json.Marshal(requestData)
@@ -373,7 +380,14 @@ func (c *Client) executeRESTWebhook(ctx context.Context, endpoint string, reques
 	return nil
 }
 
-// stripScheme removes http:// or https:// from a URL if present.
+func (c *Client) directDownloadURL(id string) string {
+	scheme := "https"
+	if !c.config.SSL {
+		scheme = "http"
+	}
+	return fmt.Sprintf("%s://%s/direct/download/%s", scheme, stripScheme(c.config.ServerURL), id)
+}
+
 func stripScheme(url string) string {
 	if len(url) > 8 && url[:8] == "https://" {
 		return url[8:]

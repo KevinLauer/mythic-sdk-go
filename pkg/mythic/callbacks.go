@@ -548,7 +548,7 @@ func (c *Client) AddCallbackGraphEdge(ctx context.Context, sourceID, destination
 		CallbackGraphEdgeAdd struct {
 			Status string `graphql:"status"`
 			Error  string `graphql:"error"`
-		} `graphql:"callbackgraphedge_add(source_id: $source_id, destination_id: $destination_id, c2profile: $c2profile)"`
+		} `graphql:"callbackgraphedgeAdd(source_id: $source_id, destination_id: $destination_id, c2profile: $c2profile)"`
 	}
 
 	variables := map[string]interface{}{
@@ -583,7 +583,7 @@ func (c *Client) RemoveCallbackGraphEdge(ctx context.Context, edgeID int) error 
 		CallbackGraphEdgeRemove struct {
 			Status string `graphql:"status"`
 			Error  string `graphql:"error"`
-		} `graphql:"callbackgraphedge_remove(edge_id: $edge_id)"`
+		} `graphql:"callbackgraphedgeRemove(edge_id: $edge_id)"`
 	}
 
 	variables := map[string]interface{}{

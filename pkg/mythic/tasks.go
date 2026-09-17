@@ -82,25 +82,13 @@ const (
 	TaskStatusCompleted     TaskStatus = "completed"
 )
 
-// IssueTask creates a new task for a callback.
-// If CallbackIDs is provided, the task will be issued to multiple callbacks.
-//
-// Note: This function uses the Hasura webhook endpoint directly instead of the GraphQL
-// mutation. This is necessary because the GraphQL client library requires all variables
-// to be present in the variables map, and serializes nil values as "null" in JSON.
-// When Hasura receives explicit null values for optional array parameters, it validates
-// them and rejects with "null value found for non-nullable type" errors, even though
-// the GraphQL schema defines these as nullable ([Int] not [Int!]!).
-//
-// The webhook approach allows us to omit parameters entirely from the JSON request,
-// which is the correct way to indicate "not provided" vs explicitly passing null.
-// This is a documented, stable API endpoint that Hasura would call anyway.
+// IssueTask creates a new task for a callback using Mythic 4 createTask.
+// CallbackID / CallbackIDs are operator display IDs (callback_display_id).
 func (c *Client) IssueTask(ctx context.Context, req *TaskRequest) (*Task, error) {
 	if err := c.EnsureAuthenticated(ctx); err != nil {
 		return nil, err
 	}
 
-	// Validate request
 	if req.CallbackID == nil && len(req.CallbackIDs) == 0 {
 		return nil, WrapError("IssueTask", ErrInvalidInput, "either callback_id or callback_ids must be provided")
 	}
@@ -108,75 +96,94 @@ func (c *Client) IssueTask(ctx context.Context, req *TaskRequest) (*Task, error)
 		return nil, WrapError("IssueTask", ErrInvalidInput, "command is required")
 	}
 
-	// Build request payload - only include non-nil/non-empty values
-	// This allows the webhook to properly distinguish "not provided" from "empty"
-	payload := map[string]interface{}{
-		"input": map[string]interface{}{
-			"command":             req.Command,
-			"params":              req.Params,
-			"is_interactive_task": req.IsInteractiveTask,
-		},
-	}
-
-	input, ok := payload["input"].(map[string]interface{})
-	if !ok {
-		return nil, WrapError("IssueTask", fmt.Errorf("unexpected payload structure"), "failed to construct request")
-	}
-
-	// Only include callback_id OR callback_ids, not both
+	ids := make([]int, 0, 1+len(req.CallbackIDs))
 	if req.CallbackID != nil {
-		input["callback_id"] = req.CallbackID
+		ids = append(ids, *req.CallbackID)
 	}
-	if len(req.CallbackIDs) > 0 {
-		input["callback_ids"] = req.CallbackIDs
+	ids = append(ids, req.CallbackIDs...)
+
+	var last *Task
+	for _, displayID := range ids {
+		task, err := c.issueTaskOne(ctx, displayID, req)
+		if err != nil {
+			return last, err
+		}
+		last = task
+	}
+	return last, nil
+}
+
+func (c *Client) issueTaskOne(ctx context.Context, callbackDisplayID int, req *TaskRequest) (*Task, error) {
+	variables := map[string]interface{}{
+		"callback": callbackDisplayID,
+		"command":  req.Command,
+		"params":   req.Params,
 	}
 
-	// Only include optional fields if they're set
-	if len(req.Files) > 0 {
-		input["files"] = req.Files
-	}
-	if req.InteractiveTaskType != nil {
-		input["interactive_task_type"] = req.InteractiveTaskType
-	}
-	if req.ParentTaskID != nil {
-		input["parent_task_id"] = req.ParentTaskID
-	}
-	if req.TaskingLocation != "" {
-		input["tasking_location"] = req.TaskingLocation
-	}
-	if req.ParameterGroupName != "" {
-		input["parameter_group_name"] = req.ParameterGroupName
-	}
-	if req.OriginalParams != "" {
-		input["original_params"] = req.OriginalParams
-	}
-	if req.TokenID != nil {
-		input["token_id"] = req.TokenID
-	}
+	mutation := `mutation CreateTask($callback: Int!, $command: String!, $params: String!) {
+		createTask(
+			callback_display_id: $callback
+			command: $command
+			params: $params
+			resolve_task_references: true
+		) {
+			status
+			error
+			display_id
+		}
+	}`
 	if req.PayloadType != nil && *req.PayloadType != "" {
-		input["payload_type"] = *req.PayloadType
+		variables["payload_type"] = *req.PayloadType
+		mutation = `mutation CreateTask($callback: Int!, $command: String!, $params: String!, $payload_type: String!) {
+			createTask(
+				callback_display_id: $callback
+				command: $command
+				params: $params
+				payload_type: $payload_type
+				resolve_task_references: true
+			) {
+				status
+				error
+				display_id
+			}
+		}`
 	}
 
-	// Call the Hasura webhook endpoint
-	var response struct {
-		Status    string `json:"status"`
-		Error     string `json:"error"`
-		ID        int    `json:"id"`
-		DisplayID int    `json:"display_id"`
-	}
-
-	err := c.executeRESTWebhook(ctx, "api/v1.4/create_task_webhook", payload, &response)
+	data, err := c.ExecuteRawGraphQL(ctx, mutation, variables)
 	if err != nil {
 		return nil, WrapError("IssueTask", err, "failed to create task")
 	}
 
-	// Check for error in response
-	if response.Status != "success" {
-		return nil, WrapError("IssueTask", ErrOperationFailed, fmt.Sprintf("task creation failed: %s", response.Error))
+	create, _ := data["createTask"].(map[string]interface{})
+	if create == nil {
+		return nil, WrapError("IssueTask", ErrInvalidResponse, "createTask returned no data")
+	}
+	status, _ := create["status"].(string)
+	if status != "success" {
+		errMsg, _ := create["error"].(string)
+		return nil, WrapError("IssueTask", ErrOperationFailed, fmt.Sprintf("task creation failed: %s", errMsg))
 	}
 
-	// Get the full task details
-	return c.GetTask(ctx, response.DisplayID)
+	displayID, err := jsonInt(create["display_id"])
+	if err != nil {
+		return nil, WrapError("IssueTask", err, "createTask missing display_id")
+	}
+	return c.GetTask(ctx, displayID)
+}
+
+func jsonInt(v interface{}) (int, error) {
+	switch n := v.(type) {
+	case int:
+		return n, nil
+	case int32:
+		return int(n), nil
+	case int64:
+		return int(n), nil
+	case float64:
+		return int(n), nil
+	default:
+		return 0, fmt.Errorf("not an int: %T", v)
+	}
 }
 
 // ScriptOnlyTaskRequest represents a request to issue a script_only command.

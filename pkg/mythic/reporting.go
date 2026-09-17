@@ -101,7 +101,7 @@ func (c *Client) GetRedirectRules(ctx context.Context, payloadUUID string) ([]*t
 				Rule         string `graphql:"rule"`
 				Description  string `graphql:"description"`
 			} `graphql:"rules"`
-		} `graphql:"redirect_rules(uuid: $uuid)"`
+		} `graphql:"redirectRules(uuid: $uuid)"`
 	}
 
 	variables := map[string]interface{}{

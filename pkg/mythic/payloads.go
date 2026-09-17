@@ -334,7 +334,7 @@ func (c *Client) RebuildPayload(ctx context.Context, uuid string) (*types.Payloa
 			UUID   string `graphql:"uuid"`
 			Status string `graphql:"status"`
 			Error  string `graphql:"error"`
-		} `graphql:"rebuild_payload(uuid: $uuid)"`
+		} `graphql:"rebuildPayload(uuid: $uuid)"`
 	}
 
 	variables := map[string]interface{}{
@@ -583,12 +583,7 @@ func (c *Client) DownloadPayload(ctx context.Context, uuid string) ([]byte, erro
 		return nil, WrapError("DownloadPayload", ErrInvalidInput, "UUID is required")
 	}
 
-	// Construct download URL
-	scheme := "https"
-	if !c.config.SSL {
-		scheme = "http"
-	}
-	downloadURL := fmt.Sprintf("%s://%s/direct/download/%s", scheme, stripScheme(c.config.ServerURL), uuid)
+	downloadURL := c.directDownloadURL(uuid)
 
 	// Create request
 	req, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)

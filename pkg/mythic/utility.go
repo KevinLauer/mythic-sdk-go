@@ -146,7 +146,7 @@ func (c *Client) ConfigCheck(ctx context.Context) (*types.ConfigCheckResponse, e
 			Errors  []string               `graphql:"errors"`
 			Config  map[string]interface{} `graphql:"config"`
 			Message string                 `graphql:"message"`
-		} `graphql:"config_check"`
+		} `graphql:"configCheck"`
 	}
 
 	if err := c.executeQuery(ctx, &query, nil); err != nil {

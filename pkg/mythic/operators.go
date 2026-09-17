@@ -286,7 +286,7 @@ func (c *Client) GetOperatorPreferences(ctx context.Context, operatorID int) (*t
 	// Empty request body - operator is determined from JWT
 	requestData := map[string]interface{}{}
 
-	err := c.executeRESTWebhook(ctx, "api/v1.4/operator_get_preferences_webhook", requestData, &response)
+	err := c.executeRESTWebhook(ctx, "operator_get_preferences_webhook", requestData, &response)
 	if err != nil {
 		return nil, WrapError("GetOperatorPreferences", err, "failed to execute webhook")
 	}
@@ -335,7 +335,7 @@ func (c *Client) UpdateOperatorPreferences(ctx context.Context, req *types.Updat
 		Error  string `json:"error"`
 	}
 
-	err := c.executeRESTWebhook(ctx, "api/v1.4/operator_update_preferences_webhook", requestData, &response)
+	err := c.executeRESTWebhook(ctx, "operator_update_preferences_webhook", requestData, &response)
 	if err != nil {
 		return WrapError("UpdateOperatorPreferences", err, "failed to execute webhook")
 	}
@@ -370,7 +370,7 @@ func (c *Client) GetOperatorSecrets(ctx context.Context, operatorID int) (*types
 		Secrets map[string]interface{} `json:"secrets"`
 	}
 
-	err := c.executeRESTWebhook(ctx, "api/v1.4/operator_get_secrets_webhook", requestData, &response)
+	err := c.executeRESTWebhook(ctx, "operator_get_secrets_webhook", requestData, &response)
 	if err != nil {
 		return nil, WrapError("GetOperatorSecrets", err, "failed to query operator secrets")
 	}
@@ -412,7 +412,7 @@ func (c *Client) UpdateOperatorSecrets(ctx context.Context, req *types.UpdateOpe
 		Error  string `json:"error"`
 	}
 
-	err := c.executeRESTWebhook(ctx, "api/v1.4/operator_update_secrets_webhook", requestData, &response)
+	err := c.executeRESTWebhook(ctx, "operator_update_secrets_webhook", requestData, &response)
 	if err != nil {
 		return WrapError("UpdateOperatorSecrets", err, "failed to execute webhook")
 	}

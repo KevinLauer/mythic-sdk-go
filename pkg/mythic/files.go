@@ -361,7 +361,7 @@ func (c *Client) UploadFile(ctx context.Context, filename string, fileData []byt
 	if !c.config.SSL {
 		scheme = "http"
 	}
-	uploadURL := fmt.Sprintf("%s://%s/api/v1.4/task_upload_file_webhook", scheme, stripScheme(c.config.ServerURL))
+	uploadURL := fmt.Sprintf("%s://%s/task_upload_file_webhook", scheme, stripScheme(c.config.ServerURL))
 
 	// Create multipart form
 	body := &bytes.Buffer{}
@@ -437,12 +437,7 @@ func (c *Client) DownloadFile(ctx context.Context, agentFileID string) ([]byte, 
 		return nil, WrapError("DownloadFile", ErrInvalidInput, "agent_file_id is required")
 	}
 
-	// Construct download endpoint URL
-	scheme := "https"
-	if !c.config.SSL {
-		scheme = "http"
-	}
-	downloadURL := fmt.Sprintf("%s://%s/api/v1.4/files/download/%s", scheme, stripScheme(c.config.ServerURL), agentFileID)
+	downloadURL := c.directDownloadURL(agentFileID)
 
 	// Create HTTP request
 	req, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
